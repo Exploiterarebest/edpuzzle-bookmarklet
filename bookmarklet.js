@@ -1,9 +1,8 @@
-// bookmarklet.js
-(function() {
+javascript:(async function() {
   if (document.getElementById("bookmarklet-gui")) return;
 
   // --- GUI container ---
-  const gui = document.createElement("div");
+  let gui = document.createElement("div");
   gui.id = "bookmarklet-gui";
   Object.assign(gui.style, {
     position: "fixed",
@@ -25,8 +24,8 @@
 
   // --- Make draggable ---
   gui.onmousedown = function(e) {
-    const shiftX = e.clientX - gui.getBoundingClientRect().left;
-    const shiftY = e.clientY - gui.getBoundingClientRect().top;
+    let shiftX = e.clientX - gui.getBoundingClientRect().left;
+    let shiftY = e.clientY - gui.getBoundingClientRect().top;
 
     function moveAt(pageX, pageY) {
       gui.style.left = pageX - shiftX + "px";
@@ -47,14 +46,14 @@
   gui.ondragstart = () => false;
 
   // --- Title ---
-  const title = document.createElement("div");
+  let title = document.createElement("div");
   title.textContent = "Bookmarklet GUI";
   Object.assign(title.style, { fontSize: "40px", marginBottom: "40px", fontWeight: "bold" });
   gui.appendChild(title);
 
   // --- Button creator ---
   function makeButton(label, action) {
-    const btn = document.createElement("button");
+    let btn = document.createElement("button");
     btn.textContent = label;
     Object.assign(btn.style, {
       background: "black",
@@ -72,56 +71,63 @@
     return btn;
   }
 
-  // --- Button 1: Skip video & auto-answer ---
+  // --- Button 1: Skip video & auto answer ---
   gui.appendChild(makeButton("Skip Video & Auto Answer", async () => {
-    async function get_attempt() {
-      const res = await fetch(location.href + "/attempts"); // adjust if needed
-      return await res.json();
-    }
-
-    async function construct_headers() {
-      return { "Content-Type": "application/json" };
-    }
-
-    async function skip_video(attempt) {
-      const id = attempt._id || attempt.id;
-      const url = `https://edpuzzle.com/api/v4/media_attempts/${id}/watch`;
-      await fetch(url, { method: "POST", headers: await construct_headers(), body: JSON.stringify({ timeIntervalNumber: 10 }) });
-      console.log("Video skipped!");
-    }
-
-    async function post_answers(attempt, questions) {
-      const filtered = questions.filter(q => q.type === "multiple-choice");
-      const id = attempt._id || attempt.id;
-      const content = { answers: [] };
-
-      filtered.forEach(q => {
-        const correct = q.choices.filter(c => c.isCorrect).map(c => c._id);
-        content.answers.push({ questionId: q._id, choices: correct, type: "multiple-choice" });
-      });
-
-      const url = `https://edpuzzle.com/api/v3/attempts/${id}/answers`;
-      await fetch(url, { method: "POST", headers: await construct_headers(), body: JSON.stringify(content) });
-      console.log("Answers submitted!");
-    }
-
     try {
-      const attempt = await get_attempt();
-      await skip_video(attempt);
+      const token = window.localStorage.getItem('edpuzzleToken'); // grab your token from localStorage
+      if (!token) { alert("Cannot find token, make sure you are logged in."); return; }
 
-      const questions = window.questions || []; // make sure questions are loaded
-      await post_answers(attempt, questions);
+      // --- Get current attempt ---
+      const attemptRes = await fetch('https://edpuzzle.com/api/v4/media_attempts?include_attempts=true', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const attempts = await attemptRes.json();
+      if (!attempts.length) { alert("No attempt found."); return; }
+      const attempt = attempts[0];
+
+      // --- Skip video ---
+      await fetch(`https://edpuzzle.com/api/v4/media_attempts/${attempt.id}/watch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ timeIntervalNumber: 10 })
+      });
+      console.log("Video skipped!");
+
+      // --- Auto answer ---
+      const questions = window.questions || [];
+      const answers = [];
+      for (let q of questions) {
+        if (q.type === "multiple-choice") {
+          const correctIds = q.choices.filter(c => c.isCorrect).map(c => c._id);
+          answers.push({ questionId: q._id, choices: correctIds, type: "multiple-choice" });
+        }
+      }
+
+      if (answers.length) {
+        await fetch(`https://edpuzzle.com/api/v3/attempts/${attempt.id}/answers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ answers })
+        });
+        console.log("Answers submitted!");
+      }
 
       alert("Video skipped and answers submitted!");
       location.reload();
-    } catch (e) {
+    } catch(e) {
       console.error(e);
-      alert("Something went wrong. Check console.");
+      alert("Something went wrong, check console.");
     }
   }));
 
   // --- Close button ---
-  const closeBtn = document.createElement("div");
+  let closeBtn = document.createElement("div");
   closeBtn.textContent = "✖";
   Object.assign(closeBtn.style, { position: "absolute", top: "15px", right: "20px", cursor: "pointer", fontWeight: "bold", fontSize: "28px" });
   closeBtn.onclick = () => gui.remove();
